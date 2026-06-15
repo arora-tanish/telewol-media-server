@@ -1,0 +1,13 @@
+[Unit]
+Description=Telegram Server Power Controller
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Environment=PYTHONPATH=/home/home/.local/lib/python3.14/site-packages
+ExecStart=/usr/bin/python3 /home/home/tg_power.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

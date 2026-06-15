@@ -1,0 +1,13 @@
+[Unit]
+Description=Send Telegram Notification on System Boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/send_wakeup.sh
+RemainAfterExit=false
+
+[Install]
+WantedBy=multi-user.target

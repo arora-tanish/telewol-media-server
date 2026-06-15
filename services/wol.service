@@ -1,0 +1,10 @@
+[Unit]
+Description=Configure Wake-on-LAN for enp2s0
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/ethtool -s enp2s0 wol g
+
+[Install]
+WantedBy=multi-user.target
