@@ -194,3 +194,6 @@ void loop() {
         lastTimeBotRan = millis();
     }
 }
+
+
+//uncomment the above comments to troubleshoot using serial monitor
