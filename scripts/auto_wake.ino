@@ -10,7 +10,7 @@ const char* password = "wifi_pass";
 #define BOTtoken "bot_token"
 
 // --- STATIC IP CONFIGURATION ---
-IPAddress local_IP(192, 168, 1, 102);  //do this config if you want to assign static ip
+IPAddress local_IP(192, 168, 1, 102);  //use this config if you want to assign static ip
 IPAddress gateway(192, 168, 1, 1);     
 IPAddress subnet(255, 255, 255, 0);    
 IPAddress primaryDNS(1, 1, 1, 1);      
