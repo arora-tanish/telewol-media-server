@@ -19,11 +19,24 @@ log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
 }
 
-# 1. Check Jellyfin Streaming via API (Looks for active playing sessions)
+# 1. Check Jellyfin Streaming (API Session Status + Live Port 8097 Traffic)
 JELLYFIN_ACTIVE=""
+
+# Check Method A: The API Check (For native app playback)
 JELLYFIN_SESSIONS=$(curl -s -H "X-MediaBrowser-Token: $JELLYFIN_KEY" "$JELLYFIN_URL/Sessions")
-if echo "$JELLYFIN_SESSIONS" | grep -q '"NowPlayingItem"'; then
+if echo "$JELLYFIN_SESSIONS" | grep -q '"NowPlayingItem"' || echo "$JELLYFIN_SESSIONS" | grep -A 5 '"PlayState"' | grep -q '"Status":"Playing"'; then
     JELLYFIN_ACTIVE="yes"
+fi
+
+# Check Method B: The Network Sniffer Check (For External Players / VLC)
+# Sniffs Jellyfin's port 8097 for 10 seconds. Real video streaming will easily trigger 200+ packets.
+if [ -z "$JELLYFIN_ACTIVE" ]; then
+    JELLY_PACKETS=$(timeout 10 tcpdump -i any -nqc 200 port 8097 and not host 127.0.0.1 2>&1 | grep "packets captured" | awk '{print $1}')
+    [ -z "$JELLY_PACKETS" ] && JELLY_PACKETS=0
+    
+    if [ "$JELLY_PACKETS" -ge 200 ]; then
+        JELLYFIN_ACTIVE="yes"
+    fi
 fi
 
 # 2. Check CasaOS Web Interface Activity (Port 81 or 80 from external devices only)
