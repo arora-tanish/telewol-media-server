@@ -95,11 +95,11 @@ else
     echo "Server is idle. Accumulating idle time: $NEW_IDLE minutes."
     log_message "Server is idle. Accumulated idle time: $NEW_IDLE minutes."
 
-    if [ "$NEW_IDLE" -ge 30 ]; then
-        echo "30 continuous minutes of complete silence reached. Safe powerdown."
-        log_message "30 minutes of continuous idle reached. Initiating system shutdown."
+    if [ "$NEW_IDLE" -ge 60 ]; then
+        echo "60 continuous minutes of complete silence reached. Safe powerdown."
+        log_message "60 minutes of continuous idle reached. Initiating system shutdown."
         # Send a notification to your phone via the Telegram Bot API
-        MESSAGE="⚠️ Server notice: 30 minutes of continuous inactivity reached. The system is shutting down now."
+        MESSAGE="⚠️ Server notice: 60 minutes of continuous inactivity reached. The system is shutting down now."
         curl -s -X POST "https://api.telegram.org/bot$TG_TOKEN/sendMessage" \
          -d "chat_id=$TG_CHAT_ID" \
          -d "text=$MESSAGE" > /dev/null
