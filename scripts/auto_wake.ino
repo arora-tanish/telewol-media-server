@@ -29,7 +29,8 @@ WiFiUDP udp;
 
 unsigned long lastTimeBotRan;
 const unsigned long botRequestDelay = 2000; 
-long last_update_id = 0; // Tracks messages cleanly without library bugs
+long last_update_id = 0; 
+int connectionFailCount = 0; // Tracks consecutive connection failures to the API
 
 bool isAuthorized(String chat_id) {
     for (int i = 0; i < AUTHORIZED_COUNT; i++) {
@@ -49,13 +50,13 @@ void sendWakeOnLan() {
     udp.beginPacket(IPAddress(192, 168, 1, 255), 9); 
     udp.write(magicPacket, sizeof(magicPacket));
     udp.endPacket();
-    // Serial.println("🚀 Magic Packet Broadcasted!");
+    Serial.println("🚀 Magic Packet Broadcasted!");
 }
-// Custom function to send Telegram messages back securely with connection safety
+
 void sendTelegramMessage(String chat_id, String text) {
-    client.setTimeout(5000); // 5-second max wait time
+    client.setTimeout(5000); 
     if (!client.connect("api.telegram.org", 443)) {
-        // Serial.println("❌ Failed to connect to Telegram to send response.");
+        Serial.println("❌ Failed to connect to Telegram to send response.");
         return;
     }
     String url = "/bot" + String(BOTtoken) + "/sendMessage?chat_id=" + chat_id + "&text=" + text;
@@ -63,7 +64,6 @@ void sendTelegramMessage(String chat_id, String text) {
                  "Host: api.telegram.org\r\n" +
                  "Connection: close\r\n\r\n");
     
-    // Give it a brief moment to transmit before cutting the wire
     unsigned long timeout = millis();
     while (client.available() == 0) {
         if (millis() - timeout > 3000) {
@@ -74,15 +74,33 @@ void sendTelegramMessage(String chat_id, String text) {
 }
 
 void checkTelegram() {
-    client.setTimeout(5000); 
+    client.setTimeout(4000); 
     
+    // Check if SSL network handshake succeeds
     if (!client.connect("api.telegram.org", 443)) {
-        // Serial.println("❌ SSL Connection to Telegram Failed or Timed Out!");
+        connectionFailCount++;
+        Serial.print("❌ SSL Connection Failed! Count: ");
+        Serial.println(connectionFailCount);
+        
+        // 🛠️ WATCHDOG RESET: If router blocks us for ~30 seconds (15 tries), reboot!
+        if (connectionFailCount >= 15) {
+            Serial.println("🔄 Watchdog Triggered! Resetting ESP8266 to clear router lanes...");
+            delay(500);
+            ESP.restart();
+        }
         client.stop();
         return;
     }
+    
+    connectionFailCount = 0; // Reset counter instantly on successful handshake
 
-    String url = "/bot" + String(BOTtoken) + "/getUpdates?offset=" + String(last_update_id + 1) + "&limit=1";
+    // Dynamic initial offset alignment patch
+    String url;
+    if (last_update_id == 0) {
+        url = "/bot" + String(BOTtoken) + "/getUpdates?limit=1"; 
+    } else {
+        url = "/bot" + String(BOTtoken) + "/getUpdates?offset=" + String(last_update_id + 1) + "&limit=1";
+    }
     
     client.print(String("GET ") + url + " HTTP/1.1\r\n" +
                  "Host: api.telegram.org\r\n" +
@@ -90,8 +108,8 @@ void checkTelegram() {
 
     unsigned long timeout = millis();
     while (client.available() == 0) {
-        if (millis() - timeout > 5000) {
-            // Serial.println("❌ Server took too long to send data response.");
+        if (millis() - timeout > 4000) {
+            Serial.println("❌ Server Data Timeout!");
             client.stop();
             return;
         }
@@ -117,17 +135,18 @@ void checkTelegram() {
         return;
     }
 
-    DynamicJsonDocument doc(4096);
+    // Static memory layout to strictly prevent long-term heap fragmentation crashes
+    StaticJsonDocument<1024> doc;
     DeserializationError error = deserializeJson(doc, cleanJson);
     if (error) {
-        // Serial.print("❌ JSON Parsing Error Details: ");
-        // Serial.println(error.c_str());
+        Serial.print("❌ Parsing Error: ");
+        Serial.println(error.c_str());
         return;
     }
 
     JsonArray result = doc["result"];
     if (result.size() == 0) {
-        // Serial.println("Done. Result code: 0 (No new messages)");
+        Serial.println("Done. Result code: 0");
         return; 
     }
 
@@ -141,19 +160,16 @@ void checkTelegram() {
     String chat_id = updateObj["message"]["chat"]["id"].as<String>();
     String text = updateObj["message"]["text"].as<String>();
 
-    // Serial.println("\n✅ Done. Result code: " + String(result.size()) + " (Message Found!)");
-    // Serial.println("📨 Message content: [" + text + "] from Chat ID: " + chat_id);
+    Serial.println("\n✅ Message Received!");
+    Serial.println("📨 Content: [" + text + "] from ID: " + chat_id);
 
-    // 🔒 Security Verification
     if (!isAuthorized(chat_id)) {
         sendTelegramMessage(chat_id, "Unauthorized user.");
         return;
     }
 
-    // 💬 FIXED RESPONSE ARRAY LOGIC
     if (text == "/wake") {
         sendWakeOnLan();
-        // Url-encode the space characters (%20) so the raw HTTP GET request doesn't break
         sendTelegramMessage(chat_id, "🚀%20Magic%20packet%20broadcasted%20to%20network%20arrays!");
     } 
     else if (text == "/start") {
@@ -162,38 +178,38 @@ void checkTelegram() {
 }
 
 void setup() {
-    // Serial.begin(115200);
+    Serial.begin(115200);
     WiFi.mode(WIFI_STA);
     
     if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
-        // Serial.println("❌ STA Configuration Failed.");
+        Serial.println("❌ STA Configuration Failed.");
     }
     
     WiFi.begin(ssid, password);
     
-    // Serial.print("Connecting to Wi-Fi");
+    Serial.print("Connecting to Wi-Fi");
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
-        // Serial.print(".");
+        Serial.print(".");
     }
-    // Serial.println("\n✅ Wi-Fi Connected!");
-    // Serial.print("📍 Fixed IP Address: ");
-    // Serial.println(WiFi.localIP());
+    Serial.println("\n✅ Wi-Fi Connected!");
+    Serial.print("📍 Fixed IP Address: ");
+    Serial.println(WiFi.localIP());
     
-    // Set up secure SSL fingerprints bypass rule globally
     client.setInsecure(); 
     udp.begin(9);
     
-    // Serial.println("🤖 Custom Wake Gateway Booted successfully. Listening for commands...");
+    Serial.println("🤖 Custom Wake Gateway Booted successfully. Listening for commands...");
 }
 
 void loop() {
     if (millis() > lastTimeBotRan + botRequestDelay) {
-        // Serial.print("🌐 Querying api.telegram.org endpoints... ");
+        // Force flush background sockets to maintain stability across cheap home routers
+        client.stop(); 
+        delay(10); 
+        
+        Serial.print("🌐 Querying api.telegram.org endpoints... ");
         checkTelegram();
         lastTimeBotRan = millis();
     }
 }
-
-
-//uncomment the above comments to troubleshoot using serial monitor
